@@ -69,7 +69,7 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            ghcr.io/grimmory-tools/grimmory:${{ env.preview_tag }}
+            ghcr.io/${{ github.repository }}:${{ env.preview_tag }}
           build-args: |
             APP_VERSION=${{ env.preview_tag }}
             APP_REVISION=${{ env.commit_sha }}

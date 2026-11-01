@@ -766,7 +766,7 @@ class BookRuleEvaluatorEdgeCasesTest {
         }
 
         @Test
-        void excludesAll_noProgress_withOtherUserProgress_bookExcludedByUserFilter() {
+        void excludesAll_noProgress_withOtherUserProgress_bookStillUnreadForViewer() {
             BookLoreUserEntity user2 = BookLoreUserEntity.builder()
                     .username("otheruser2")
                     .passwordHash("hash2")
@@ -786,8 +786,7 @@ class BookRuleEvaluatorEdgeCasesTest {
 
             List<Long> ids = findMatchingIds(singleRule(RuleField.READ_STATUS, RuleOperator.EXCLUDES_ALL,
                     List.of("READ", "ABANDONED")));
-            assertThat(ids).doesNotContain(book.getId());
-            assertThat(ids).contains(noProgressBook.getId());
+            assertThat(ids).contains(book.getId(), noProgressBook.getId());
         }
     }
 

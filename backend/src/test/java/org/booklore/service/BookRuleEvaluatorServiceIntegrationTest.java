@@ -156,6 +156,27 @@ class BookRuleEvaluatorServiceIntegrationTest {
         return progress;
     }
 
+    private BookLoreUserEntity createOtherUser() {
+        BookLoreUserEntity other = BookLoreUserEntity.builder()
+                .username("otheruser")
+                .passwordHash("hash")
+                .isDefaultPassword(true)
+                .name("Other User")
+                .build();
+        em.persist(other);
+        em.flush();
+        return other;
+    }
+
+    private void createProgressFor(BookLoreUserEntity owner, BookEntity book, ReadStatus status) {
+        em.persist(UserBookProgressEntity.builder()
+                .user(owner)
+                .book(book)
+                .readStatus(status)
+                .build());
+        em.flush();
+    }
+
     private List<Long> findMatchingIds(GroupRule group) {
         Specification<BookEntity> spec = evaluator.toSpecification(group, user.getId());
         return bookRepository.findAll(spec).stream().map(BookEntity::getId).distinct().toList();
@@ -2446,6 +2467,65 @@ class BookRuleEvaluatorServiceIntegrationTest {
             List<Long> ids = findMatchingIds(singleRule(RuleField.PAGE_COUNT, RuleOperator.NOT_EQUALS, 300));
             assertThat(ids).contains(book500.getId());
             assertThat(ids).doesNotContain(book300.getId());
+        }
+    }
+
+    @Nested
+    class OtherUsersProgressTests {
+        @Test
+        void bookWithOnlyAnotherUsersProgress_stillMatchesForViewer() {
+            BookLoreUserEntity other = createOtherUser();
+            BookEntity shared = createBook("Shared Book");
+            createProgressFor(other, shared, ReadStatus.READ);
+            em.flush();
+            em.clear();
+
+            List<Long> ids = findMatchingIds(singleRule(RuleField.TITLE, RuleOperator.CONTAINS, "Shared"));
+            assertThat(ids).containsExactly(shared.getId());
+        }
+
+        @Test
+        void anotherUsersReadStatus_doesNotCountForViewer() {
+            BookLoreUserEntity other = createOtherUser();
+            BookEntity shared = createBook("Read By Other");
+            createProgressFor(other, shared, ReadStatus.READ);
+            em.flush();
+            em.clear();
+
+            assertThat(findMatchingIds(singleRule(RuleField.READ_STATUS, RuleOperator.NOT_EQUALS, "READ")))
+                    .contains(shared.getId());
+            assertThat(findMatchingIds(singleRule(RuleField.READ_STATUS, RuleOperator.EQUALS, "READ")))
+                    .doesNotContain(shared.getId());
+        }
+
+        @Test
+        void bothUsersHaveProgress_viewersStatusIsUsed() {
+            BookLoreUserEntity other = createOtherUser();
+            BookEntity shared = createBook("Read By Both");
+            createProgress(shared, ReadStatus.READING);
+            createProgressFor(other, shared, ReadStatus.READ);
+            em.flush();
+            em.clear();
+
+            assertThat(findMatchingIds(singleRule(RuleField.READ_STATUS, RuleOperator.EQUALS, "READING")))
+                    .containsExactly(shared.getId());
+            assertThat(findMatchingIds(singleRule(RuleField.READ_STATUS, RuleOperator.EQUALS, "READ")))
+                    .doesNotContain(shared.getId());
+        }
+
+        @Test
+        void nextUnread_ignoresBooksOnlyAnotherUserHasRead() {
+            BookLoreUserEntity other = createOtherUser();
+            BookEntity b1 = createBook("Other S1", "Other Series", 1f, 3);
+            BookEntity b2 = createBook("Other S2", "Other Series", 2f, 3);
+            BookEntity b3 = createBook("Other S3", "Other Series", 3f, 3);
+            createProgress(b1, ReadStatus.READ);
+            createProgressFor(other, b2, ReadStatus.READ);
+            em.flush();
+            em.clear();
+
+            List<Long> ids = findMatchingIds(singleRule(RuleField.SERIES_POSITION, RuleOperator.EQUALS, "next_unread"));
+            assertThat(ids).containsExactly(b2.getId());
         }
     }
 }

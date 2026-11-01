@@ -40,16 +40,12 @@ public class BookRuleEvaluatorService {
             // content reflect unique BookEntity results.
             query.distinct(true);
 
+            // Restrict the join itself to the viewer's progress. Filtering on the user in
+            // WHERE would drop books that only other users have progress on.
             Join<BookEntity, UserBookProgressEntity> progressJoin = root.join("userBookProgress", JoinType.LEFT);
+            progressJoin.on(cb.equal(progressJoin.get("user").get("id"), userId));
 
-            Predicate userPredicate = cb.or(
-                    cb.isNull(progressJoin.get("user").get("id")),
-                    cb.equal(progressJoin.get("user").get("id"), userId)
-            );
-
-            Predicate rulePredicate = buildPredicate(groupRule, query, cb, root, progressJoin, userId);
-
-            return cb.and(userPredicate, rulePredicate);
+            return buildPredicate(groupRule, query, cb, root, progressJoin, userId);
         };
     }
 
@@ -490,6 +486,7 @@ public class BookRuleEvaluatorService {
         Subquery<Long> lowerUnreadSub = query.subquery(Long.class);
         Root<BookEntity> luRoot = lowerUnreadSub.from(BookEntity.class);
         Join<Object, Object> luProgress = luRoot.join("userBookProgress", JoinType.LEFT);
+        luProgress.on(cb.equal(luProgress.get("user").get("id"), userId));
         lowerUnreadSub.select(cb.literal(1L)).where(
                 cb.equal(luRoot.get("metadata").get("seriesName"), root.get("metadata").get("seriesName")),
                 cb.isNotNull(luRoot.get("metadata").get("seriesNumber")),
@@ -497,10 +494,6 @@ public class BookRuleEvaluatorService {
                 cb.or(
                         cb.isNull(luProgress.get("readStatus")),
                         cb.notEqual(luProgress.get("readStatus"), ReadStatus.READ)
-                ),
-                cb.or(
-                        cb.isNull(luProgress.get("user").get("id")),
-                        cb.equal(luProgress.get("user").get("id"), userId)
                 )
         );
         Predicate noLowerUnread = cb.not(cb.exists(lowerUnreadSub));
